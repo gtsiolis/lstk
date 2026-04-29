@@ -94,6 +94,8 @@ func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {
 	require.NoError(t, err, "lstk start should succeed when container is already running: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "already running")
+	assert.Contains(t, stdout, "Note: LocalStack")
+	assert.Regexp(t, `LocalStack\s+\S+\s+is already running`, stdout)
 	assertCommandTelemetry(t, events, "start", 0)
 }
 
@@ -142,6 +144,8 @@ func TestStartCommandAttachesToExternalContainer(t *testing.T) {
 	require.NoError(t, err, "lstk start should succeed when external container is running: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "already running")
+	assert.Contains(t, stdout, "Note: LocalStack")
+	assert.Regexp(t, `LocalStack\s+\S+\s+is already running`, stdout)
 	assertCommandTelemetry(t, events, "start", 0)
 }
 

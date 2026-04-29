@@ -374,7 +374,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack is already running"})
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: alreadyRunningMessage(ctx, c.Port)})
 			resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
 			if !dnsOK {
 				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
@@ -400,7 +400,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port))
 				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
-			sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "LocalStack is already running"})
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: alreadyRunningMessage(ctx, c.Port)})
 			continue
 		}
 
@@ -435,6 +435,12 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 	return filtered, nil
 }
 
+func alreadyRunningMessage(ctx context.Context, port string) string {
+	if info, err := fetchLocalStackInfo(ctx, port); err == nil && info.Version != "" {
+		return fmt.Sprintf("LocalStack %s is already running", info.Version)
+	}
+	return "LocalStack is already running"
+}
 func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion, configTag string) {
 	if configTag == "" {
 		configTag = "latest"
