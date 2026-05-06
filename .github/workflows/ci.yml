@@ -82,6 +82,7 @@ jobs:
 
   test-integration:
     name: Integration Tests (${{ matrix.os }}${{ matrix.shard && format(' shard {0}/{1}', matrix.shard, matrix.shard_total) || '' }})
+    if: github.repository == 'localstack/lstk' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -153,15 +154,26 @@ jobs:
     if: always()
     steps:
       - name: Verify integration matrix succeeded
+        env:
+          IS_UPSTREAM_REPO: ${{ github.repository == 'localstack/lstk' }}
         run: |
-          if [ "${{ needs.test-integration.result }}" != "success" ]; then
-            echo "test-integration matrix result: ${{ needs.test-integration.result }}"
-            exit 1
+          result="${{ needs.test-integration.result }}"
+
+          if [ "${result}" = "success" ]; then
+            exit 0
           fi
+
+          if [ "${result}" = "skipped" ] && [ "${IS_UPSTREAM_REPO}" != "true" ]; then
+            echo "test-integration matrix skipped for fork context"
+            exit 0
+          fi
+
+          echo "test-integration matrix result: ${result}"
+          exit 1
 
   release:
     name: Build and Publish Release
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.repository == 'localstack/lstk' && startsWith(github.ref, 'refs/tags/')
     needs:
       - lint
       - goreleaser-check
