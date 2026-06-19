@@ -560,6 +560,21 @@ func styleDeferredEvent(inner output.Event) (string, bool) {
 			}
 		case output.MessageEvent:
 			parts[i] = styles.Highlight.Render(p)
+		case output.SnapshotInspectedEvent:
+			// The "~ Snapshot analysis for <file>" title uses the light Nimbo
+			// purple (same as the "~ N snapshots" list summary), with a blank
+			// line above and below the two-line header. The size line, the
+			// top-level group rows, the separator rule, and the TOTAL footer are
+			// subdued gray; indented child rows stay neutral.
+			switch {
+			case i == 0:
+				parts[i] = "\n" + styles.Highlight.Render(p)
+			case i == 1:
+				parts[i] = styles.SecondaryMessage.Render(p) + "\n"
+			case strings.HasPrefix(p, " "):
+			default:
+				parts[i] = styles.SecondaryMessage.Render(p)
+			}
 		}
 	}
 	styled := strings.Join(parts, "\n")

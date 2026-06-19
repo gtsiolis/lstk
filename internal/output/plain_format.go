@@ -2,6 +2,8 @@ package output
 
 import (
 	"fmt"
+	"math"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -50,6 +52,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatPodSnapshotRemoved(e), true
 	case SnapshotShownEvent:
 		return formatSnapshotShown(e), true
+	case SnapshotInspectedEvent:
+		return formatSnapshotInspected(e), true
 	case AuthCompleteEvent:
 		return "", false
 	default:
@@ -275,6 +279,67 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 			sb.WriteString(fmt.Sprintf("  %-*s%s", snapshotShowLabelWidth-2, r.Service, strings.Join(parts, ", ")))
 		}
 	}
+	return sb.String()
+}
+
+func formatSnapshotInspected(e SnapshotInspectedEvent) string {
+	pct := func(b int64) string {
+		if e.TotalUncompressed <= 0 {
+			return "0%"
+		}
+		return fmt.Sprintf("%d%%", int64(math.Round(float64(b)*100/float64(e.TotalUncompressed))))
+	}
+
+	type sizeRow struct{ label, size, pct string }
+	var rows []sizeRow
+	var walk func(n SnapshotSizeNode, depth int)
+	walk = func(n SnapshotSizeNode, depth int) {
+		label := strings.Repeat("  ", depth) + n.Label
+		// Collapse a parent whose single child is a leaf into one row, but name
+		// the service so specificity is kept (e.g. "Databases (dynamodb)").
+		collapse := len(n.Children) == 1 && len(n.Children[0].Children) == 0
+		if collapse {
+			label += " (" + n.Children[0].Label + ")"
+		}
+		rows = append(rows, sizeRow{label, formatBytes(n.Uncompressed), pct(n.Uncompressed)})
+		if collapse {
+			return
+		}
+		for _, c := range n.Children {
+			walk(c, depth+1)
+		}
+	}
+	for _, g := range e.Groups {
+		walk(g, 0)
+	}
+	totalRow := sizeRow{"TOTAL", formatBytes(e.TotalUncompressed), "100%"}
+
+	labelW, sizeW := 0, 0
+	for _, r := range append(append([]sizeRow{}, rows...), totalRow) {
+		if len(r.label) > labelW {
+			labelW = len(r.label)
+		}
+		if len(r.size) > sizeW {
+			sizeW = len(r.size)
+		}
+	}
+
+	line := func(r sizeRow) string {
+		return fmt.Sprintf("%-*s  %*s  %4s", labelW, r.label, sizeW, r.size, r.pct)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("~ Snapshot analysis for %s", filepath.Base(e.Path)))
+	sb.WriteString("\n")
+	sb.WriteString("  " + formatBytes(e.TotalUncompressed))
+	for _, r := range rows {
+		sb.WriteString("\n")
+		sb.WriteString(line(r))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(strings.Repeat("─", labelW+2+sizeW+2+4))
+	sb.WriteString("\n")
+	sb.WriteString(line(totalRow))
 	return sb.String()
 }
 

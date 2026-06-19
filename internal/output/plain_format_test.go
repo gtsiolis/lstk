@@ -439,6 +439,84 @@ func TestFormatSnapshotShown(t *testing.T) {
 	}
 }
 
+func TestFormatSnapshotInspected(t *testing.T) {
+	t.Parallel()
+
+	event := SnapshotInspectedEvent{
+		Path:              "./x.snapshot",
+		TotalUncompressed: 1500,
+		TotalCompressed:   1350,
+		Groups: []SnapshotSizeNode{
+			{Label: "Data Assets", Uncompressed: 1300, Compressed: 1200, Children: []SnapshotSizeNode{
+				{Label: "Databases", Uncompressed: 1000, Compressed: 950, Children: []SnapshotSizeNode{
+					{Label: "rds", Uncompressed: 700, Compressed: 650},
+					{Label: "dynamodb", Uncompressed: 300, Compressed: 300},
+				}},
+				{Label: "S3 Objects", Uncompressed: 300, Compressed: 250, Children: []SnapshotSizeNode{
+					{Label: "s3", Uncompressed: 300, Compressed: 250}, // sole service -> collapsed
+				}},
+			}},
+			{Label: "Control Plane", Uncompressed: 200, Compressed: 150, Children: []SnapshotSizeNode{
+				{Label: "iam", Uncompressed: 150, Compressed: 120},
+				{Label: "sqs", Uncompressed: 50, Compressed: 30},
+			}},
+		},
+	}
+
+	got, ok := FormatEventLine(event)
+	if !ok {
+		t.Fatalf("expected ok=true")
+	}
+	lines := strings.Split(got, "\n")
+
+	if want := "~ Snapshot analysis for x.snapshot"; lines[0] != want {
+		t.Fatalf("header = %q, want %q", lines[0], want)
+	}
+	if want := "  1.5 KB"; lines[1] != want {
+		t.Fatalf("size line = %q, want %q", lines[1], want)
+	}
+
+	idx := func(substr string) int {
+		for i, l := range lines {
+			if strings.Contains(l, substr) {
+				return i
+			}
+		}
+		return -1
+	}
+
+	// Groups sorted largest-first.
+	daIdx, cpIdx := idx("Data Assets"), idx("Control Plane")
+	if daIdx == -1 || cpIdx == -1 || daIdx > cpIdx {
+		t.Fatalf("expected Data Assets before Control Plane; got:\n%s", got)
+	}
+
+	// Categories appear at depth 1; their services nest at depth 2, sorted.
+	dbIdx := idx("  Databases")
+	rdsIdx, dynIdx := idx("    rds"), idx("    dynamodb")
+	if dbIdx == -1 || rdsIdx == -1 || dynIdx == -1 || dbIdx >= rdsIdx || rdsIdx >= dynIdx {
+		t.Fatalf("expected Databases then nested rds, dynamodb; got:\n%s", got)
+	}
+
+	// A single-service category collapses into one row that names the service —
+	// "S3 Objects (s3)" — with no deeper "s3" row beneath it.
+	s3oIdx := idx("S3 Objects (s3)")
+	if s3oIdx == -1 {
+		t.Fatalf("expected collapsed 'S3 Objects (s3)' row; got:\n%s", got)
+	}
+	if s3oIdx+1 < len(lines) && strings.HasPrefix(lines[s3oIdx+1], "    s3") {
+		t.Fatalf("single-service category should collapse its child; got: %q", lines[s3oIdx+1])
+	}
+
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "TOTAL") || !strings.Contains(last, "100%") {
+		t.Fatalf("expected final TOTAL line with 100%%; got %q", last)
+	}
+	if !strings.Contains(got, "─") {
+		t.Fatalf("expected a separator rule; got:\n%s", got)
+	}
+}
+
 func TestFormatBytes(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

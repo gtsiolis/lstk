@@ -124,6 +124,27 @@ type SnapshotShownEvent struct {
 	Resources         []SnapshotResourceLine
 }
 
+// SnapshotSizeNode is a node in a snapshot's size tree: a top-level group
+// (e.g. Control Plane or Data Assets), a Data-Asset category, or a service.
+// Children hold the next level down, sorted largest-first by uncompressed size;
+// a leaf has none.
+type SnapshotSizeNode struct {
+	Label        string             `json:"label"`
+	Uncompressed int64              `json:"uncompressed_bytes"`
+	Compressed   int64              `json:"compressed_bytes"`
+	Children     []SnapshotSizeNode `json:"children,omitempty"`
+}
+
+// SnapshotInspectedEvent reports the size breakdown of a local snapshot file for
+// the `snapshot inspect` command. Sizes are tallied per archive entry with no
+// running emulator and no platform call. Groups are sorted largest-first.
+type SnapshotInspectedEvent struct {
+	Path              string             `json:"path"`
+	TotalUncompressed int64              `json:"total_uncompressed_bytes"`
+	TotalCompressed   int64              `json:"total_compressed_bytes"`
+	Groups            []SnapshotSizeNode `json:"groups"`
+}
+
 type AuthCompleteEvent struct{}
 
 // Event is a sealed marker — only event types in this package implement it,
@@ -143,6 +164,7 @@ func (DeferredEvent) sealedEvent()           {}
 func (SnapshotLoadedEvent) sealedEvent()     {}
 func (PodSnapshotRemovedEvent) sealedEvent() {}
 func (SnapshotShownEvent) sealedEvent()      {}
+func (SnapshotInspectedEvent) sealedEvent()  {}
 func (ContainerStatusEvent) sealedEvent()    {}
 func (ProgressEvent) sealedEvent()           {}
 func (UserInputRequestEvent) sealedEvent()   {}
